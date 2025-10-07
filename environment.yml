@@ -1,0 +1,26 @@
+name: mxsquare
+channels:
+  - conda-forge
+dependencies:
+  - python=3.11
+  - pyqt=6
+  - qt-main
+  - epics-base=7.*
+  - pyepics
+  - numpy
+  - pip
+  # X/XCB libs for X11
+  - xorg-libx11
+  - xorg-libxext
+  - xorg-libxrender
+  - xorg-libxau
+  - xorg-libxdmcp
+  - libxcb
+  - xcb-util
+  - xcb-util-image
+  - xcb-util-keysyms
+  - xcb-util-renderutil
+  - xcb-util-wm
+  - xcb-util-cursor
+  - libxkbcommon
+  - xkeyboard-config
