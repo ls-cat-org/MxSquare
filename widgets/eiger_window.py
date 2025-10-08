@@ -3,13 +3,15 @@ from __future__ import annotations
 
 import time
 from PyQt6.QtWidgets import QWidget, QVBoxLayout, QLabel, QGridLayout
-from PyQt6.QtCore import Qt, QTimer, pyqtSignal, QObject
+from PyQt6.QtCore import Qt, QTimer, pyqtSignal
 from concurrent.futures import ThreadPoolExecutor, Future
 
 from utils.epics_tools import get_caget_value
 
 DEFAULT_PV_PREFIX = "21EIG2:cam1:"
 
+# Suffixes you want to display (readbacks only)
+# Removed FilePath (array PV)
 PV_ITEMS = [
     ("Manufacturer",  "Manufacturer_RBV"),
     ("Model",         "Model_RBV"),
@@ -17,23 +19,45 @@ PV_ITEMS = [
     ("FrameCounter",  "NumImagesCounter_RBV"),
     ("AcquireTime",   "AcquireTime_RBV"),
     ("TriggerMode",   "TriggerMode_RBV"),
-    ("FilePath",      "FilePath_RBV"),
     ("FileName",      "FileName_RBV"),
     ("FileNumber",    "FileNumber_RBV"),
 ]
 
 class EigerWindow(QWidget):
-    """Detector (Eiger2) — always-on PV polling via utils.epics_tools.get_caget_value."""
+    """Detector (Eiger2) — always-on PV polling with main-window theme."""
 
-    # Strongly-typed signal so UI updates happen on the GUI thread reliably
-    valueReady = pyqtSignal(object, str)   # (QLabel, value)
+    valueReady = pyqtSignal(object, str)
 
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("Detector")
+        self.setWindowTitle("Detector — Eiger2")
+        self.setStyleSheet("""
+            QWidget {
+                background-color: #e8f0ff;   /* soft blue background */
+                color: #0a1a40;             /* dark navy text */
+                font-size: 13px;
+            }
+            QLabel {
+                padding: 2px 6px;
+            }
+            QLabel[role="key"] {
+                font-weight: bold;
+            }
+            QLabel[role="val"] {
+                color: #0a1a40;
+            }
+            QLabel[role="val"]:hover {
+                color: #ffcc33;             /* warm yellow hover */
+            }
+            QToolTip {
+                background-color: #ffcc33;
+                color: #0a1a40;
+                border: 1px solid #0a1a40;
+            }
+        """)
 
         outer = QVBoxLayout(self)
-        title = QLabel("<h3> Eiger2 </h3>")
+        title = QLabel("<h3>Eiger2 Detector</h3>")
         title.setAlignment(Qt.AlignmentFlag.AlignHCenter)
         outer.addWidget(title)
 
@@ -41,17 +65,17 @@ class EigerWindow(QWidget):
         grid.setHorizontalSpacing(12)
         grid.setVerticalSpacing(6)
 
-        # rows: list of (name, pv, label_widget)
         self._rows: list[tuple[str, str, QLabel]] = []
 
-        # Real PV rows
         for i, (label_text, suffix) in enumerate(PV_ITEMS):
             pv = DEFAULT_PV_PREFIX + suffix
-            key = QLabel(f"<b>{label_text}</b>")
+            key = QLabel(label_text)
+            key.setProperty("role", "key")
             key.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
             key.setToolTip(pv)
 
             val = QLabel("—")
+            val.setProperty("role", "val")
             val.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
             val.setMinimumWidth(260)
 
@@ -59,12 +83,11 @@ class EigerWindow(QWidget):
             grid.addWidget(val, i, 1)
             self._rows.append((label_text, pv, val))
 
-        # Always-on TEST row (no EPICS) so we can see UI updates:
-        test_key = QLabel("<b>TEST (seconds since start)</b>")
+        # Test row to prove updates (remove later if you want)
+        test_key = QLabel("TEST (seconds)")
+        test_key.setProperty("role", "key")
         test_val = QLabel("—")
-        test_key.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
-        test_val.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
-        test_val.setMinimumWidth(260)
+        test_val.setProperty("role", "val")
         grid.addWidget(test_key, len(PV_ITEMS), 0)
         grid.addWidget(test_val, len(PV_ITEMS), 1)
         self._test_label = test_val
@@ -72,29 +95,22 @@ class EigerWindow(QWidget):
 
         outer.addLayout(grid)
 
-        # Polling infra (always on)
+        # Polling infra
         self._pool = ThreadPoolExecutor(max_workers=6)
         self._inflight: list[Future] = []
-
         self._timer = QTimer(self)
         self._timer.setInterval(1000)  # 1s
         self._timer.timeout.connect(self._poll_once)
         self._timer.start()
 
-        # UI update signal
         self.valueReady.connect(self._on_value_ready)
 
-        print("[DEBUG] EigerWindow started; polling every 1s", flush=True)
-
-    # -------- polling --------
     def _poll_once(self):
-        # Update TEST row so we can see something change even if PVs fail
+        # update test row every tick
         elapsed = f"{int(time.time() - self._t0)}"
         self.valueReady.emit(self._test_label, elapsed)
 
-        # Avoid overlapping batches
         if any(f for f in self._inflight if not f.done()):
-            print("[DEBUG] Skipping tick: previous batch still in-flight", flush=True)
             return
         self._inflight.clear()
 
@@ -105,11 +121,8 @@ class EigerWindow(QWidget):
 
     @staticmethod
     def _safe_caget(name: str, pv: str) -> tuple[str, str]:
-        """Return (pv, value_text). Never raise."""
         try:
-            print(f"[DEBUG] caget -> {pv}  [{name}]", flush=True)
             ok, val = get_caget_value(pv)
-            print(f"[DEBUG] result <- ok={ok}, val={val!r}  [{name}]", flush=True)
             return pv, (val if ok else "")
         except Exception as e:
             print(f"[DEBUG] exception calling caget({pv}): {e}", flush=True)
@@ -117,15 +130,11 @@ class EigerWindow(QWidget):
 
     def _deliver(self, label: QLabel, fut: Future):
         pv, val = fut.result()
-        print(f"[DEBUG] deliver {pv} -> {val!r}", flush=True)
-        # Emit signal to update label on GUI thread
         self.valueReady.emit(label, "—" if not val else val)
 
-    # -------- UI slot --------
     def _on_value_ready(self, label: QLabel, value: str):
         label.setText(value)
 
-    # -------- cleanup --------
     def closeEvent(self, event):
         try:
             self._timer.stop()
