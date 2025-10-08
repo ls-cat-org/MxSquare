@@ -43,7 +43,7 @@ class ControlPanel(QWidget):
 
         lay = QVBoxLayout(self)
 
-        title = QLabel("<h2>MxSquare • User Essentials</h2>")
+        title = QLabel("<h2> • MxSquare • </h2>")
         title.setAlignment(Qt.AlignmentFlag.AlignHCenter)
         lay.addWidget(title)
 
@@ -61,18 +61,18 @@ class ControlPanel(QWidget):
 
         # Row 2: Microscope + Recent Images
         row2 = QHBoxLayout()
-        btn_micro = QPushButton("Microscope")
+        btn_micro = QPushButton("Microscope (MD3)")
         btn_micro.clicked.connect(self.open_microscope)
         row2.addWidget(btn_micro)
 
-        btn_browser = QPushButton("Recent Images")
+        btn_browser = QPushButton("Recent Images (BeeBox)")
         btn_browser.clicked.connect(self.open_browser)
         row2.addWidget(btn_browser)
 
         lay.addLayout(row2)
 
         # Hint
-        hint = QLabel("Each window is self-contained. No crosstalk required.")
+        hint = QLabel("Each window is self-contained. Click to Launch.")
         hint.setAlignment(Qt.AlignmentFlag.AlignHCenter)
         lay.addWidget(hint)
 
