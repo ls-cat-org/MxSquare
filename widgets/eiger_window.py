@@ -8,9 +8,9 @@ class EigerWindow(QWidget):
     """
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("Detector — Eiger2 (Placeholder)")
+        self.setWindowTitle("Detector")
         lay = QVBoxLayout(self)
-        title = QLabel("<h3>Detector (Eiger2)</h3>")
+        title = QLabel("<h3> Eiger2 </h3>")
         title.setAlignment(Qt.AlignmentFlag.AlignHCenter)
         lay.addWidget(title)
         lay.addWidget(QLabel("This window will host user fields like:"))
