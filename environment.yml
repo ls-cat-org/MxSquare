@@ -8,8 +8,9 @@ dependencies:
   - epics-base=7.*
   - pyepics
   - numpy
+  - h5py
   - pip
-  # X/XCB libs for X11
+  # X/XCB libs for X11 (needed on bare X11 hosts)
   - xorg-libx11
   - xorg-libxext
   - xorg-libxrender
@@ -24,3 +25,4 @@ dependencies:
   - xcb-util-cursor
   - libxkbcommon
   - xkeyboard-config
+
