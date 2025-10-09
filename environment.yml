@@ -10,6 +10,7 @@ dependencies:
   - numpy
   - h5py
   - pip
+  - matplotlib
   # X/XCB libs for X11 (needed on bare X11 hosts)
   - xorg-libx11
   - xorg-libxext
