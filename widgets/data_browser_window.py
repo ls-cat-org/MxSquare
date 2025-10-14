@@ -241,12 +241,13 @@ class _EigerChooserWidget(QWidget):
         # manual_range set to (5, 50) as requested
         state = {
             "cmap": "magma",
-            "gamma": 1.6,
+            "gamma": 0.8,
             "transpose": False,
             "i": 0,
             "manual_range": (5, 50),
             "mask_hot": True,
             "hot_value": 65535,  # will be overwritten below if integer dtype
+            "spot_boost": False,   # NEW
         }
 
         # Controls
@@ -256,6 +257,7 @@ class _EigerChooserWidget(QWidget):
         btn_gm_down = QPushButton("γ−"); btn_gm_up = QPushButton("γ+")
         btn_trans = QPushButton("Transpose X↔Y")
         btn_hist = QPushButton("Histogram")
+        btn_spot = QPushButton("Spot ×10: Off")   # NEW
         btn_close = QPushButton("Close")
 
         spin_jump = QSpinBox(); spin_jump.setRange(1, max(1, nframes)); spin_jump.setValue(1)
@@ -266,6 +268,7 @@ class _EigerChooserWidget(QWidget):
         spin_min.setRange(-100000, 100000); spin_max.setRange(-100000, 100000)
         spin_min.setValue(5); spin_max.setValue(50)
         btn_apply_range = QPushButton("Apply")
+
 
         # Hot pixel mask controls
         chk_mask_hot = QCheckBox("Mask hot pixels")
@@ -289,6 +292,36 @@ class _EigerChooserWidget(QWidget):
             state["hot_value"] = int(spin_hot.value()); _render(state["i"])
         chk_mask_hot.toggled.connect(toggle_mask_hot)
         spin_hot.editingFinished.connect(set_hot_value)
+        def toggle_spot():                        # NEW
+            state["spot_boost"] = not state["spot_boost"]
+            btn_spot.setText(f"Spot ×10: {'On' if state['spot_boost'] else 'Off'}")
+            _render(state["i"])
+
+        def _enhance_small_spots(x01):
+            # Visual-only: gently dilate mid-bright pixels to make small spots pop.
+            # x01 is expected in [0,1]
+            p70 = float(np.percentile(x01, 70.0))
+            p98 = float(np.percentile(x01, 98.0))
+            if not np.isfinite(p70) or not np.isfinite(p98) or p98 <= p70:
+                return x01
+        
+            mask = (x01 > p70) & (x01 < p98)
+            spot = np.where(mask, x01, 0.0)
+        
+            def dilate8(img):
+                up    = np.pad(img[1: , : ], ((0,1),(0,0)))
+                down  = np.pad(img[:-1, : ], ((1,0),(0,0)))
+                left  = np.pad(img[: , 1: ], ((0,0),(0,1)))
+                right = np.pad(img[: , :-1], ((0,0),(1,0)))
+                ul    = np.pad(img[1: , 1: ], ((0,1),(0,1)))
+                ur    = np.pad(img[1: , :-1], ((0,1),(1,0)))
+                dl    = np.pad(img[:-1, 1: ], ((1,0),(0,1)))
+                dr    = np.pad(img[:-1, :-1], ((1,0),(1,0)))
+                return np.maximum.reduce([img, up, down, left, right, ul, ur, dl, dr])
+        
+            dil = dilate8(dilate8(dilate8(spot)))  # ~3 iters = strong but still gentle
+            out = np.clip(x01 + dil, 0.0, 1.0)
+            return out
 
         # --- rendering with hot mask + fixed range ---
         def _render(frame_index: int):
@@ -328,6 +361,10 @@ class _EigerChooserWidget(QWidget):
             g = max(0.1, float(state.get("gamma", 1.0)))
             if abs(g - 1.0) > 1e-3:
                 out = np.power(out, g)
+
+            # NEW: spot boost toggle
+            if state.get("spot_boost", False):
+                out = _enhance_small_spots(out)
 
             if state.get("transpose", False):
                 out = out.T
@@ -416,6 +453,7 @@ class _EigerChooserWidget(QWidget):
         btn_close.clicked.connect(dlg.accept)
         chk_mask_hot.toggled.connect(toggle_mask_hot)
         spin_hot.editingFinished.connect(set_hot_value)
+        btn_spot.clicked.connect(toggle_spot)     # NEW
 
         # keyboard ← / →
         dlg.keyPressEvent = (  # IMPORTANT: PyQt6 enums use Qt.Key.Key_*
@@ -436,7 +474,7 @@ class _EigerChooserWidget(QWidget):
         row1 = QHBoxLayout()
         row1.addWidget(btn_prev); row1.addWidget(btn_next); row1.addSpacing(12); row1.addWidget(idx_label)
         row1.addStretch(1)
-        row1.addWidget(btn_cmap); row1.addWidget(btn_gm_down); row1.addWidget(btn_gm_up); row1.addWidget(btn_trans)
+        row1.addWidget(btn_cmap); row1.addWidget(btn_gm_down); row1.addWidget(btn_gm_up); row1.addWidget(btn_trans); row1.addWidget(btn_spot) 
 
         row2 = QHBoxLayout()
         row2.addWidget(QLabel("Go to:")); row2.addWidget(spin_jump); row2.addWidget(btn_go)
