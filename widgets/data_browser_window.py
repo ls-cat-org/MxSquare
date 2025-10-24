@@ -298,30 +298,37 @@ class _EigerChooserWidget(QWidget):
             _render(state["i"])
 
         def _enhance_small_spots(x01):
-            # Visual-only: gently dilate mid-bright pixels to make small spots pop.
-            # x01 is expected in [0,1]
-            p70 = float(np.percentile(x01, 70.0))
-            p98 = float(np.percentile(x01, 98.0))
-            if not np.isfinite(p70) or not np.isfinite(p98) or p98 <= p70:
-                return x01
+            """Make only the very brightest points (top ~0.5%) appear larger, without glowing the rest."""
+            import numpy as np
         
-            mask = (x01 > p70) & (x01 < p98)
-            spot = np.where(mask, x01, 0.0)
+            # Work on copy
+            img = np.asarray(x01, dtype=np.float32).copy()
         
-            def dilate8(img):
-                up    = np.pad(img[1: , : ], ((0,1),(0,0)))
-                down  = np.pad(img[:-1, : ], ((1,0),(0,0)))
-                left  = np.pad(img[: , 1: ], ((0,0),(0,1)))
-                right = np.pad(img[: , :-1], ((0,0),(1,0)))
-                ul    = np.pad(img[1: , 1: ], ((0,1),(0,1)))
-                ur    = np.pad(img[1: , :-1], ((0,1),(1,0)))
-                dl    = np.pad(img[:-1, 1: ], ((1,0),(0,1)))
-                dr    = np.pad(img[:-1, :-1], ((1,0),(1,0)))
-                return np.maximum.reduce([img, up, down, left, right, ul, ur, dl, dr])
+            # Find high-intensity cutoff — only the top 0.5% of pixels
+            p995 = float(np.percentile(img, 99.9))
+            mask = img >= p995
         
-            dil = dilate8(dilate8(dilate8(spot)))  # ~3 iters = strong but still gentle
-            out = np.clip(x01 + dil, 0.0, 1.0)
-            return out
+            # Dilate these bright spots a few times (expand small spots)
+            def dilate8(m):
+                up    = np.pad(m[1: , : ], ((0,1),(0,0)))
+                down  = np.pad(m[:-1, : ], ((1,0),(0,0)))
+                left  = np.pad(m[: , 1: ], ((0,0),(0,1)))
+                right = np.pad(m[: , :-1], ((0,0),(1,0)))
+                ul    = np.pad(m[1: , 1: ], ((0,1),(0,1)))
+                ur    = np.pad(m[1: , :-1], ((0,1),(1,0)))
+                dl    = np.pad(m[:-1, 1: ], ((1,0),(0,1)))
+                dr    = np.pad(m[:-1, :-1], ((1,0),(1,0)))
+                return np.maximum.reduce([m, up, down, left, right, ul, ur, dl, dr])
+        
+            dil = mask
+            for _ in range(2):  # 1–2 passes only
+                dil = dilate8(dil)
+        
+            # Fill in dilated area with high intensity (like spreading glow)
+            out = np.where(dil, np.maximum(img, 0.9), img)
+            return np.clip(out, 0.0, 1.0)
+    
+
 
         # --- rendering with hot mask + fixed range ---
         def _render(frame_index: int):
